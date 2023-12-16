@@ -1,40 +1,30 @@
 ﻿using System;
 
-namespace LevelDB.NET
+namespace LevelDB.NET;
+
+internal class Footer(BlockHandle metaIndexHandle, BlockHandle indexHandle)
 {
-    internal class Footer
+    public const uint EncodedLength = 2 * BlockHandle.MaxEncodedLength + 8;
+    public const ulong TableMagicNumber = 0xdb4775248b80fb57;
+
+    public BlockHandle MetaIndexHandle { get; } = metaIndexHandle;
+    public BlockHandle IndexHandle { get; } = indexHandle;
+
+    public static Footer DecodeFrom(Slice slice)
     {
-        public const uint kEncodedLength = 2 * BlockHandle.kMaxEncodedLength + 8;
-        public const ulong kTableMagicNumber = 0xdb4775248b80fb57;
+        var startOffset = slice.Offset;
+        var startLength = slice.Length;
 
-        public BlockHandle MetaIndexHandle { get; }
-        public BlockHandle IndexHandle { get; }
+        var magicLo = Coding.DecodeFixed32(slice.NewSlice(EncodedLength - 8, 4));
+        var magicHi = Coding.DecodeFixed32(slice.NewSlice(EncodedLength - 4, 4));
+        var magic = ((ulong)magicHi << 32) | magicLo;
 
-        public Footer(BlockHandle metaIndexHandle, BlockHandle indexHandle)
-        {
-            MetaIndexHandle = metaIndexHandle;
-            IndexHandle = indexHandle;
-        }
+        if (magic != TableMagicNumber) throw new Exception("not an sstable (bad magic number)");
 
-        public static Footer DecodeFrom(Slice slice)
-        {
-            uint startOffset = slice.Offset;
-            uint startLength = slice.Length;
+        var metaIndexHandle = BlockHandle.DecodeFrom(slice);
+        var indexHandle = BlockHandle.DecodeFrom(slice);
 
-            uint magic_lo = Coding.DecodeFixed32(slice.NewSlice(kEncodedLength - 8, 4));
-            uint magic_hi = Coding.DecodeFixed32(slice.NewSlice(kEncodedLength - 4, 4));
-            ulong magic = (unchecked((ulong)magic_hi) << 32) | unchecked((ulong)magic_lo);
-
-            if (magic != kTableMagicNumber)
-            {
-                throw new Exception("not an sstable (bad magic number)");
-            }
-
-            var metaIndexHandle = BlockHandle.DecodeFrom(slice);
-            var indexHandle = BlockHandle.DecodeFrom(slice);
-
-            slice.Update(startOffset + kEncodedLength, startLength - kEncodedLength);
-            return new Footer(metaIndexHandle, indexHandle);
-        }
+        slice.Update(startOffset + EncodedLength, startLength - EncodedLength);
+        return new Footer(metaIndexHandle, indexHandle);
     }
 }

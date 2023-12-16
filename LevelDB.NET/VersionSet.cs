@@ -2,187 +2,125 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace LevelDB.NET
+namespace LevelDB.NET;
+
+internal class VersionSet : IDisposable
 {
-    internal class VersionSet : IDisposable
+    private readonly List<TableFile> m_files = [];
+
+    public bool HasComparator { get; private set; }
+    public string Comparator { get; private set; } = string.Empty;
+    public bool HasLogNumber { get; private set; }
+    public ulong LogNumber { get; private set; }
+    public bool HasNextFileNumber { get; private set; }
+    public ulong NextFileNumber { get; private set; }
+    public bool HasLastSequence { get; private set; }
+    public ulong LastSequence { get; private set; }
+    public bool HasPrevLogNumber { get; private set; }
+    public ulong PrevLogNumber { get; private set; }
+
+    public IEnumerable<TableFile> Files => m_files.AsReadOnly();
+
+    public void Dispose()
     {
-        private bool m_hasComparator;
-        private string m_comparator = string.Empty;
+        foreach (var file in m_files) file.Dispose();
+        m_files.Clear();
+    }
 
-        private bool m_hasLogNumber;
-        private ulong m_logNumber;
-
-        private bool m_hasNextFileNumber;
-        private ulong m_nextFileNumber;
-
-        private bool m_hasLastSequence;
-        private ulong m_lastSequence;
-
-        private bool m_hasPrevLogNumber;
-        private ulong m_prevLogNumber;
-
-        private readonly List<TableFile> m_files = new List<TableFile>();
-
-        private enum Tag
+    public void Add(Record record)
+    {
+        var actionDict = new[]
         {
-            kComparator = 1,
-            kLogNumber = 2,
-            kNextFileNumber = 3,
-            kLastSequence = 4,
-            kCompactPointer = 5,
-            kDeletedFile = 6,
-            kNewFile = 7,
-            // 8 was used for large value refs
-            kPrevLogNumber = 9
+            Error,
+            ReadComparator,
+            ReadLogNumber,
+            ReadNextFileNumber,
+            ReadLastSequence,
+            ReadCompactPointer,
+            ReadDeletedFiled,
+            ReadNewFile,
+            Error,
+            ReadPrevLogNumber
         };
 
-
-        public void Dispose()
+        var slice = new Slice(record.Bytes);
+        while (slice.Length > 0)
         {
-            foreach (var file in m_files)
-            {
-                file.Dispose();
-            }
-            m_files.Clear();
+            var type = Coding.DecodeVarint32(slice);
+            actionDict[type].Invoke(slice);
         }
+    }
 
-        public void Add(Record record)
-        {
-            var actionDict = new Action<Slice>[]
-            {
-                    Error,
-                    ReadComparator,
-                    ReadLogNumber,
-                    ReadNextFileNumber,
-                    ReadLastSequence,
-                    ReadCompactPointer,
-                    ReadDeletedFiled,
-                    ReadNewFile,
-                    Error,
-                    ReadPrevLogNumber,
-            };
+    private static void Error(Slice slice)
+    {
+        throw new Exception("Unknown record type field.");
+    }
 
-            var slice = new Slice(record.Bytes);
-            while (slice.Length > 0)
-            {
-                var type = Coding.DecodeVarint32(slice);
-                actionDict[type].Invoke(slice);
-            }
-        }
+    private void ReadComparator(Slice slice)
+    {
+        var bytes = Coding.DecodeLengthPrefixed(slice);
+        Comparator = Encoding.ASCII.GetString(bytes);
+        HasComparator = true;
+    }
 
-        public bool HasComparator
-        {
-            get { return m_hasComparator; }
-        }
+    private void ReadLogNumber(Slice slice)
+    {
+        LogNumber = Coding.DecodeVarint64(slice);
+        HasLogNumber = true;
+    }
 
-        public string Comparator
-        {
-            get { return m_comparator; }
-        }
+    private void ReadNextFileNumber(Slice slice)
+    {
+        NextFileNumber = Coding.DecodeVarint64(slice);
+        HasNextFileNumber = true;
+    }
 
-        public bool HasLogNumber
-        {
-            get { return m_hasLogNumber; }
-        }
+    private void ReadLastSequence(Slice slice)
+    {
+        LastSequence = Coding.DecodeVarint64(slice);
+        HasLastSequence = true;
+    }
 
-        public ulong LogNumber
-        {
-            get { return m_logNumber; }
-        }
+    private static void ReadCompactPointer(Slice slice)
+    {
+        var level = Coding.DecodeVarint32(slice);
+        var pointer = Coding.DecodeLengthPrefixed(slice);
+    }
 
-        public bool HasNextFileNumber
-        {
-            get { return m_hasNextFileNumber; }
-        }
+    private static void ReadDeletedFiled(Slice slice)
+    {
+        var level = Coding.DecodeVarint32(slice);
+        var fileNr = Coding.DecodeVarint64(slice);
+    }
 
-        public ulong NextFileNumber
-        {
-            get { return m_nextFileNumber; }
-        }
+    private void ReadNewFile(Slice slice)
+    {
+        var level = Coding.DecodeVarint32(slice);
+        var fileNr = Coding.DecodeVarint64(slice);
+        var fileSize = Coding.DecodeVarint64(slice);
+        var smallest = new Key(Coding.DecodeLengthPrefixed(slice));
+        var largest = new Key(Coding.DecodeLengthPrefixed(slice));
 
-        public bool HasLastSequence
-        {
-            get { return m_hasLastSequence; }
-        }
+        m_files.Add(new TableFile(level, fileNr, fileSize, smallest, largest));
+    }
 
-        public ulong LastSequence
-        {
-            get { return m_lastSequence; }
-        }
+    private void ReadPrevLogNumber(Slice slice)
+    {
+        PrevLogNumber = Coding.DecodeVarint64(slice);
+        HasPrevLogNumber = true;
+    }
 
-        public bool HasPrevLogNumber
-        {
-            get { return m_hasPrevLogNumber; }
-        }
+    private enum Tag
+    {
+        kComparator = 1,
+        kLogNumber = 2,
+        kNextFileNumber = 3,
+        kLastSequence = 4,
+        kCompactPointer = 5,
+        kDeletedFile = 6,
+        kNewFile = 7,
 
-        public ulong PrevLogNumber
-        {
-            get { return m_prevLogNumber; }
-        }
-
-        public IEnumerable<TableFile> Files
-        {
-            get { return m_files.AsReadOnly(); }
-        }
-
-        private void Error(Slice slice)
-        {
-            throw new Exception("Unknown record type field.");
-        }
-
-        private void ReadComparator(Slice slice)
-        {
-            var bytes = Coding.DecodeLengthPrefixed(slice);
-            m_comparator = Encoding.ASCII.GetString(bytes);
-            m_hasComparator = true;
-        }
-
-        private void ReadLogNumber(Slice slice)
-        {
-            m_logNumber = Coding.DecodeVarint64(slice);
-            m_hasLogNumber = true;
-        }
-
-        private void ReadNextFileNumber(Slice slice)
-        {
-            m_nextFileNumber = Coding.DecodeVarint64(slice);
-            m_hasNextFileNumber = true;
-        }
-
-        private void ReadLastSequence(Slice slice)
-        {
-            m_lastSequence = Coding.DecodeVarint64(slice);
-            m_hasLastSequence = true;
-        }
-
-        private void ReadCompactPointer(Slice slice)
-        {
-            var level = Coding.DecodeVarint32(slice);
-            var pointer = Coding.DecodeLengthPrefixed(slice);
-        }
-
-        private void ReadDeletedFiled(Slice slice)
-        {
-            var level = Coding.DecodeVarint32(slice);
-            var fileNr = Coding.DecodeVarint64(slice);
-
-        }
-
-        private void ReadNewFile(Slice slice)
-        {
-            var level = Coding.DecodeVarint32(slice);
-            var fileNr = Coding.DecodeVarint64(slice);
-            var fileSize = Coding.DecodeVarint64(slice);
-            var smallest = new Key(Coding.DecodeLengthPrefixed(slice));
-            var largest = new Key(Coding.DecodeLengthPrefixed(slice));
-
-            m_files.Add(new TableFile(level, fileNr, fileSize, smallest, largest));
-        }
-
-        private void ReadPrevLogNumber(Slice slice)
-        {
-            m_prevLogNumber = Coding.DecodeVarint64(slice);
-            m_hasPrevLogNumber = true;
-        }
+        // 8 was used for large value refs
+        kPrevLogNumber = 9
     }
 }

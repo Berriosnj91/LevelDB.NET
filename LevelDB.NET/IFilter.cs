@@ -1,7 +1,6 @@
-﻿namespace LevelDB.NET
+﻿namespace LevelDB.NET;
+
+public interface IFilter
 {
-    public interface IFilter
-    {
-        int Compare(byte[] key);
-    }
+    int Compare(byte[] key);
 }

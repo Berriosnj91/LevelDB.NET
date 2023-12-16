@@ -1,43 +1,42 @@
 ﻿using System.Diagnostics;
 using System.Text;
 
-namespace LevelDB.NET
+namespace LevelDB.NET;
+
+internal enum KeyType
 {
-    internal enum KeyType
+    kTypeDeletion = 0x0,
+    kTypeValue = 0x1
+}
+
+internal class Key
+{
+    public Key(byte[] data)
+        : this(new Slice(data))
     {
-        kTypeDeletion = 0x0,
-        kTypeValue = 0x1
     }
 
-    internal class Key
+    public Key(Slice data)
     {
-        public byte[] UserKey { get; }
-        public ulong Sequence { get; }
-        public KeyType Type { get; }
+        var n = data.Length;
+        Debug.Assert(n >= 8);
 
-        public Key(byte[] data)
-            : this(new Slice(data))
-        {
-        }
+        var num = Coding.DecodeFixed64(data.NewSlice(n - 8, 8));
 
-        public Key(Slice data)
-        {
-            uint n = data.Length;
-            Debug.Assert(n >= 8);
+        var c = unchecked((byte)(num & 0xff));
+        Debug.Assert(c <= (byte)KeyType.kTypeValue);
 
-            ulong num = Coding.DecodeFixed64(data.NewSlice(n - 8, 8));
+        Type = (KeyType)c;
+        Sequence = num >> 8;
+        UserKey = data.NewSlice(0, n - 8).ToArray();
+    }
 
-            byte c = unchecked((byte)(num & 0xff));
-            Debug.Assert(c <= (byte)KeyType.kTypeValue);
+    public byte[] UserKey { get; }
+    public ulong Sequence { get; }
+    public KeyType Type { get; }
 
-            Type = (KeyType)c;
-            Sequence = num >> 8;
-            UserKey = data.NewSlice(0, n - 8).ToArray();
-        }
-
-        public override string ToString()
-        {
-            return Encoding.ASCII.GetString(UserKey);
-        }
+    public override string ToString()
+    {
+        return Encoding.UTF8.GetString(UserKey);
     }
 }

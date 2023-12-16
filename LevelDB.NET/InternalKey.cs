@@ -1,41 +1,33 @@
 ﻿using System;
 
-namespace LevelDB.NET
+namespace LevelDB.NET;
+
+internal class InternalKey
 {
-    internal class InternalKey
+    private readonly byte[] m_bytes = new byte[128];
+
+    public uint Length { get; private set; }
+
+    public void Clear() => Length = 0;
+
+    public void Resize(uint size)
     {
-        private byte[] m_bytes = new byte[128];
-        private uint m_length = 0;
+        Length = size;
+    }
 
-        public void Clear()
+    public void Append(Slice slice)
+    {
+        for (uint i = 0; i < slice.Length; ++i)
         {
-            m_length = 0;
+            m_bytes[Length] = slice[i];
+            Length++;
         }
+    }
 
-        public uint Length
-        {
-            get { return m_length; }
-        }
-
-        public void Resize(uint size)
-        {
-            m_length = size;
-        }
-
-        public void Append(Slice slice)
-        {
-            for (uint i = 0; i < slice.Length; ++i)
-            {
-                m_bytes[m_length] = slice[i];
-                m_length++;
-            }
-        }
-
-        public Slice Slice(uint offset, uint length)
-        {
-            offset = Math.Min(m_length, offset);
-            length = Math.Min(m_length - offset, length);
-            return new Slice(m_bytes, offset, length);
-        }
+    public Slice Slice(uint offset, uint length)
+    {
+        offset = Math.Min(Length, offset);
+        length = Math.Min(Length - offset, length);
+        return new Slice(m_bytes, offset, length);
     }
 }

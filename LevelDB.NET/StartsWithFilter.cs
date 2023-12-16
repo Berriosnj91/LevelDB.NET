@@ -1,21 +1,13 @@
 ﻿using System;
 
-namespace LevelDB.NET
+namespace LevelDB.NET;
+
+public class StartsWithFilter(byte[] key) : IFilter
 {
-    public class StartsWithFilter : IFilter
+    public int Compare(byte[] key1)
     {
-        private readonly byte[] m_key;
-
-        public StartsWithFilter(byte[] key)
-        {
-            m_key = key;
-        }
-
-        public int Compare(byte[] key)
-        {
-            int minLen = Math.Min(key.Length, m_key.Length);
-            var cut = key.AsSpan().Slice(0, minLen);
-            return MemoryExtensions.SequenceCompareTo<byte>(m_key, cut);
-        }
+        var minLen = Math.Min(key1.Length, key.Length);
+        var cut = key1[..minLen];
+        return MemoryExtensions.SequenceCompareTo<byte>(key, cut);
     }
 }
