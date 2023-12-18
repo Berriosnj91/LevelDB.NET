@@ -20,10 +20,7 @@ public class Table : IDisposable, IReadOnlyDictionary<byte[], byte[]>
         m_path = path;
 
         if (!m_versionSet.HasComparator) return;
-        if (m_versionSet.Comparator == "leveldb.BytewiseComparator")
-            Comparator = new BytewiseComparator();
-        else
-            throw new Exception("Not supported yet");
+        Comparator = new BytewiseComparator();
     }
 
     public IComparer<byte[]> Comparator { get; set; } = new BytewiseComparator();
