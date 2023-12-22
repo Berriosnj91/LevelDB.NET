@@ -70,7 +70,6 @@ public class Table : IDisposable, IReadOnlyDictionary<byte[], byte[]>
         if (!TryFindFile(key, out var file)) return false;
         file.AssureOpen(m_path, m_sharedCache);
         return file.ContainsKey(key, Comparator);
-
     }
 
     public IEnumerator<KeyValuePair<byte[], byte[]>> GetEnumerator()
@@ -121,7 +120,7 @@ public class Table : IDisposable, IReadOnlyDictionary<byte[], byte[]>
         using (var file = File.OpenRead(Path.Combine(directory, current[0])))
         {
             var recordReader = new RecordReader();
-            var numRead = 0;
+            int numRead;
             do
             {
                 numRead = file.Read(block);
@@ -129,7 +128,7 @@ public class Table : IDisposable, IReadOnlyDictionary<byte[], byte[]>
                 var sequence = new ReadOnlySequence<byte>(block);
                 var reader = new SequenceReader<byte>(sequence);
                 while (reader.Remaining > 6)
-                    if (!recordReader.From(ref reader, record => versionSet.Add(record)))
+                    if (!recordReader.From(ref reader, versionSet.Add))
                         break;
             } while (numRead >= block.Length);
         }
@@ -141,7 +140,16 @@ public class Table : IDisposable, IReadOnlyDictionary<byte[], byte[]>
     {
         foreach (var f in m_versionSet.Files)
         {
-            f.AssureOpen(m_path, m_sharedCache);
+            try
+            {
+                f.AssureOpen(m_path, m_sharedCache);
+            }
+            catch
+            {
+                f.Close();
+                continue; // :/
+            }
+
             foreach (var item in f) yield return item;
             f.Close();
         }
